@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Particles - GPGPU Flowfield Animation (Babylon.js port)</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="curr-model">
+      <h3>Current Experience:<span id="curr-model-name"></span></h3>
+      <p>
+        Model Credits: <a target="_blank" id="credits-anchor" href="">Model</a>
+      </p>
+      <p>
+        Music Credits:
+        <a target="_blank" id="music-credits-anchor" href=""></a>
+      </p>
+      <div id="music-play-btn" class="music-icon">
+        <span class="music-bar paused"></span>
+        <span class="music-bar paused"></span>
+        <span class="music-bar paused"></span>
+      </div>
+    </div>
+
+    <div>
+      <h4 style="color: #fff">Loading Experience...!</h4>
+    </div>
+
+    <button id="next-model-button">New Model!</button>
+    <div class="underlay">
+      <h1>Particles-GPGPU (Babylon.js)</h1>
+      <p>
+        Babylon.js port of
+        <a
+          target="_blank"
+          href="https://github.com/SahilK-027/0x7444ff/tree/main/particles-GPGPU"
+          >SK027's particles-GPGPU</a
+        >.
+      </p>
+    </div>
+    <canvas class="webgl"></canvas>
+    <script type="module" src="./script.js"></script>
+  </body>
+</html>

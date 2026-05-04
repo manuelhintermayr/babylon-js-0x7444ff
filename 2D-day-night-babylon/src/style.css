@@ -1,0 +1,22 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background-color: #000;
+  overflow: hidden;
+}
+
+.webgl {
+  position: fixed;
+  top: 0;
+  left: 0;
+  /* Source uses renderer.setSize which writes both intrinsic AND CSS
+   * dimensions; Babylon's engine.resize() only reads CSS, so we set
+   * 100vw/100vh explicitly here. */
+  width: 100vw;
+  height: 100vh;
+  outline: none;
+}

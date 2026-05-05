@@ -61,7 +61,7 @@ const isMobile = window.matchMedia("(max-width: 768px)").matches;
 const models = [
   {
     name: "Spring Rose Garden",
-    modelLink: "/rose.glb",
+    modelLink: "./rose.glb",
     camera: { x: 0, y: 10, z: 35 + (isMobile ? 10 : 0) },
     clearColor: "#120310",
     rotation: { x: Math.PI / 3, y: Math.PI / 2, z: Math.PI / 2 },
@@ -73,7 +73,7 @@ const models = [
   },
   {
     name: "MV Spartan",
-    modelLink: "/model.glb",
+    modelLink: "./model.glb",
     camera: { x: 4.5, y: 4, z: 20 + (isMobile ? 8 : 0) },
     clearColor: "#1a1622",
     rotation: { x: 0, y: -Math.PI / 8, z: 0 },
@@ -85,7 +85,7 @@ const models = [
   },
   {
     name: "Flowerpot",
-    modelLink: "/flowerpot.glb",
+    modelLink: "./flowerpot.glb",
     camera: { x: 0, y: 0, z: 70 + (isMobile ? 25 : 0) },
     clearColor: "#2a1325",
     rotation: { x: 0, y: 0, z: 0 },
@@ -100,7 +100,7 @@ const models = [
   },
   {
     name: "Chameleon",
-    modelLink: "/chameleon.glb",
+    modelLink: "./chameleon.glb",
     camera: { x: 0, y: 10, z: 16 + (isMobile ? 8 : 0) },
     clearColor: "#041615",
     rotation: { x: 0, y: 0 + (isMobile ? -0.4 : 0), z: 0 },
@@ -376,7 +376,10 @@ window.addEventListener("resize", () => engine.resize());
 
 // ── Load model ──────────────────────────────────────────────────────────
 
-const imported = await SceneLoader.ImportMeshAsync(null, "/", model.modelLink.replace(/^\.?\//, ""), scene);
+// rootUrl is relative to the served index.html so the build works under
+// any deploy sub-folder. The leading "/" or "./" on modelLink is stripped
+// because rootUrl already provides the prefix.
+const imported = await SceneLoader.ImportMeshAsync(null, "./", model.modelLink.replace(/^\.?\//, ""), scene);
 
 // The Three.js source takes `gltf.scene.children[0].geometry` directly.
 // In Babylon, `ImportMeshAsync` returns the meshes flat; the first

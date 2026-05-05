@@ -334,7 +334,9 @@ material.onBindObservable.add(() => {
 
 // ── Load model ──────────────────────────────────────────────────────────
 
-const imported = await SceneLoader.ImportMeshAsync(null, "/", "models/ele.glb", scene);
+// rootUrl is relative to the served index.html so the build works under
+// any deploy sub-folder.
+const imported = await SceneLoader.ImportMeshAsync(null, "./", "models/ele.glb", scene);
 
 // Source picks `gltf.scene.getObjectByName("ele")` — Babylon equivalent:
 // scene.getMeshByName("ele"), or fall back to the first mesh with vertices.

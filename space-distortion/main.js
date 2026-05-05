@@ -134,9 +134,11 @@ const loadTexture = (url) => {
   return t;
 };
 
-let bgTexture = loadTexture("/textures/bg.png");
-let fgTexture = loadTexture("/textures/fg.png");
-const blobTexture = loadTexture("/blob.png");
+// Asset paths are relative to the served index.html so the build works
+// under any deploy sub-folder.
+let bgTexture = loadTexture("./textures/bg.png");
+let fgTexture = loadTexture("./textures/fg.png");
+const blobTexture = loadTexture("./blob.png");
 
 /**
  * Shader source
@@ -280,13 +282,13 @@ const swapTextures = (demo) => {
   if (demo === "demo-1") {
     bgTexture.dispose();
     fgTexture.dispose();
-    bgTexture = loadTexture("/textures/bg.png");
-    fgTexture = loadTexture("/textures/fg.png");
+    bgTexture = loadTexture("./textures/bg.png");
+    fgTexture = loadTexture("./textures/fg.png");
   } else {
     bgTexture.dispose();
     fgTexture.dispose();
-    bgTexture = loadTexture("/textures/bird.jpg");
-    fgTexture = loadTexture("/textures/bird-bw.jpg");
+    bgTexture = loadTexture("./textures/bird.jpg");
+    fgTexture = loadTexture("./textures/bird-bw.jpg");
   }
   bgMaterial.setTexture("uTexture", bgTexture);
   fgMaterial.setTexture("uTexture", fgTexture);

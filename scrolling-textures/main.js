@@ -129,8 +129,10 @@ camera.attachControl(canvas, true);
 
 const plane = MeshBuilder.CreatePlane("plane", { size: 1 }, scene);
 
+// Path is relative to the served index.html so the build works under
+// any deploy sub-folder.
 const diffuse = new Texture(
-  "/textures/seamless_cartoon_styled_water_texture_by_berserkitty_dcatyft-375w-2x.jpg",
+  "./textures/seamless_cartoon_styled_water_texture_by_berserkitty_dcatyft-375w-2x.jpg",
   scene,
 );
 diffuse.wrapU = Texture.MIRROR_ADDRESSMODE;     // THREE.MirrorWrapping

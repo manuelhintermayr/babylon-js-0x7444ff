@@ -98,8 +98,10 @@ camera.attachControl(canvas, true);
 /**
  * HDR environment (RGBELoader -> HDRCubeTexture)
  */
+// Asset paths are relative to the served index.html so the build works
+// under any deploy sub-folder.
 const hdr = new HDRCubeTexture(
-  "/assets/environment/clouds.hdr",
+  "./assets/environment/clouds.hdr",
   scene,
   256
 );
@@ -134,9 +136,9 @@ const loadTex = (url) => {
 //   grass_displacement_map_2.png — https://thedemonthrone.ca/projects/rendering-terrain/rendering-terrain-part-20-normal-and-displacement-mapping/
 //   grass_displacement_map_3.png — https://www.filterforge.com/filters/11382-bump.html
 //                                  (this is the one the demo actually uses)
-const grassTexture = loadTex("/assets/textures/grass_blade.png");
+const grassTexture = loadTex("./assets/textures/grass_blade.png");
 const grassDisplacementTexture3 = loadTex(
-  "/assets/textures/grass_displacement_map_3.png"
+  "./assets/textures/grass_displacement_map_3.png"
 );
 
 /**

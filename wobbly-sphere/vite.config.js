@@ -6,6 +6,7 @@
 // directory so npm's hoisted node_modules (vite client env.mjs etc.)
 // resolved from a sibling port don't get blocked.
 export default {
+  base: "./",
   publicDir: "./public/",
   server: {
     fs: { allow: [".."] },

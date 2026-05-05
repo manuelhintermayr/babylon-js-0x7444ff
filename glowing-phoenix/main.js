@@ -348,7 +348,9 @@ material.onBindObservable.add(() => {
 
 // ── Load model ──────────────────────────────────────────────────────────
 
-const imported = await SceneLoader.ImportMeshAsync(null, "/", "models/phoenix.glb", scene);
+// rootUrl is relative to the served index.html so the build works under
+// any deploy sub-folder.
+const imported = await SceneLoader.ImportMeshAsync(null, "./", "models/phoenix.glb", scene);
 imported.meshes.forEach((m) => {
   if (!m.getTotalVertices || m.getTotalVertices() === 0) return;
 

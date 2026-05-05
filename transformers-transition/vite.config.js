@@ -4,6 +4,7 @@
 // the .png files via the same path the source uses, without duplicating
 // ~5 MB of art.
 export default {
+  base: "./",
   server: {
     fs: {
       allow: [".."],

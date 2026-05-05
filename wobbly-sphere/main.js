@@ -153,7 +153,9 @@ camera.attachControl(canvas, true);
 
 // ── Environment map ─────────────────────────────────────────────────────
 
-const envTexture = new HDRCubeTexture("/studio_country_hall_1k.hdr", scene, /* size */ 256);
+// Path is relative to the served index.html so the build works under
+// any deploy sub-folder.
+const envTexture = new HDRCubeTexture("./studio_country_hall_1k.hdr", scene, /* size */ 256);
 scene.environmentTexture = envTexture;
 scene.environmentIntensity = 1;
 // THREE: scene.background = environmentMap; → Babylon: createDefaultSkybox.

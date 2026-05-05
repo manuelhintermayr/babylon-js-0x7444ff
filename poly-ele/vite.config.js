@@ -1,5 +1,10 @@
-// publicDir → sibling Three.js project's public/ so /models/ele.glb
-// + /draco/* are served from a single location without duplication.
+// publicDir → ./public/ so /models/ele.glb + /draco/* are served from
+// there. `target: esnext` is needed because main.js uses top-level
+// await for SceneLoader.ImportMeshAsync.
 export default {
+  base: "./",
   publicDir: "./public/",
+  build: {
+    target: "esnext",
+  },
 };

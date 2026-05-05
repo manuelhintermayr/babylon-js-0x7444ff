@@ -2,5 +2,6 @@
 // HDR + texture assets are served from a single location without
 // duplication.
 export default {
+  base: "./",
   publicDir: "./public/",
 };

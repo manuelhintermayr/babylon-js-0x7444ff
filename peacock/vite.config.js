@@ -4,6 +4,7 @@
 // — same trick the particles-GPGPU-babylon and transformers-transition-
 // babylon ports use to avoid asset duplication.
 export default {
+  base: "./",
   server: {
     fs: {
       allow: [".."],

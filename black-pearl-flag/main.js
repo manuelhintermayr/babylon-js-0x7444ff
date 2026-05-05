@@ -148,7 +148,10 @@ function buildSubdividedPlane(width, height, subX, subY) {
 
 // ── Texture ─────────────────────────────────────────────────────────────
 
-const flagTexture = new Texture("/textures/pearl.png", scene);
+// Path is relative to the served index.html (not the host root) so the
+// build works under any deploy sub-folder, e.g.
+// /babylon-js-0x7444ff/black-pearl-flag/.
+const flagTexture = new Texture("./textures/pearl.png", scene);
 
 // ── Material ────────────────────────────────────────────────────────────
 

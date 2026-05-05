@@ -1,11 +1,10 @@
 // Mirrors the Three.js source's vite config — same root + base. The
-// publicDir points at the sibling Three.js project's static/ so the
-// 15+ MB ironman.glb (and the DRACO decoder) is served from a single
-// location without duplication. Same trick the particles-GPGPU-babylon
-// port uses.
+// publicDir points at the project's static/ so the 15+ MB ironman.glb
+// (and the DRACO decoder) is served from there. Path is `../static/`
+// because root is `src/`.
 export default {
   root: "src/",
-  publicDir: "./static/",
+  publicDir: "../static/",
   base: "./",
   server: {
     host: true,

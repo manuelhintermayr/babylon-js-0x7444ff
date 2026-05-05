@@ -3,6 +3,11 @@ body {
   overflow: hidden;
 }
 
+/* Source sets canvas.width/height directly per frame from JS;
+ * Babylon's engine.resize() reads the CSS size, so the canvas needs
+ * an explicit 100vw/100vh here. */
 canvas {
   display: block;
+  width: 100vw;
+  height: 100vh;
 }

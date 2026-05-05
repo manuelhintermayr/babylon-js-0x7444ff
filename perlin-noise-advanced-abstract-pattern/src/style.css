@@ -41,7 +41,11 @@ html {
   z-index: 2;
   color: white;
 }
-.title {
+/* Source style.css uses a bare `.title` selector intended for the
+ * <h1 class="title"> in #app. lil-gui's folder headers are also
+ * <div class="title">, so they were inheriting the 10vh Ailerons
+ * font and blowing up to fill the GUI panel. Scope to #app. */
+#app .title {
   font-family: "Ailerons", Helvetica, Arial, sans-serif;
   font-weight: 400;
   text-align: center;
@@ -54,7 +58,7 @@ html {
   font-size: 10vh;
 }
 
-.title::selection {
+#app .title::selection {
   color: rgb(36, 255, 160);
   background: #ffffff22;
 }
@@ -90,4 +94,25 @@ html {
   a:hover {
     color: rgb(36, 255, 160);
   }
+}
+
+/* The source uses an older dat.GUI build whose panel renders fully
+ * opaque against the page background. lil-gui defaults to a semi-
+ * transparent panel, so the giant <h1 class="title"> bleeds through
+ * the controls AND through the folder headers AND through the gaps
+ * between sections (visible as ghost letters in the GUI).
+ *
+ * Force the entire panel — outer container, every folder, every
+ * folder header, the children blocks — to opaque dark, and lift it
+ * above the title's z-index. */
+.lil-gui {
+  z-index: 10 !important;
+}
+.lil-gui,
+.lil-gui .children,
+.lil-gui > div {
+  background-color: #1f1f1f !important;
+}
+.lil-gui .title {
+  background-color: #0e0e0e !important;
 }

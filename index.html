@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>babylon-js-0x7444ff — Gallery</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        user-select: none;
+      }
+      html, body {
+        width: 100%;
+        min-height: 100vh;
+        background: #0b0b10;
+        color: #e8e8ee;
+        font-family: "Open Sans", system-ui, -apple-system, sans-serif;
+        font-weight: 300;
+        line-height: 1.5;
+        overflow-x: hidden;
+      }
+      a {
+        color: #b18cff;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        transition: color 0.2s ease;
+      }
+      a:hover { color: #ffffff; }
+
+      /* Header / hero ---------------------------------------------------- */
+      header {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 80px 32px 32px;
+      }
+      header h1 {
+        font-size: 48px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        margin-bottom: 16px;
+        line-height: 1.05;
+      }
+      header h1 span.accent {
+        color: #b18cff;
+      }
+      header p {
+        font-size: 16px;
+        max-width: 720px;
+        color: #c0c0c8;
+        margin-bottom: 12px;
+      }
+      header .meta {
+        font-size: 13px;
+        color: #888;
+        margin-top: 24px;
+      }
+      header .meta a { user-select: text; }
+
+      /* Grid ------------------------------------------------------------- */
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 32px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+      }
+      .card {
+        background: #15151c;
+        border: 1px solid #25252e;
+        border-radius: 8px;
+        overflow: hidden;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+        display: flex;
+        flex-direction: column;
+      }
+      .card:hover {
+        transform: translateY(-3px);
+        border-color: #b18cff;
+        box-shadow: 0 8px 32px rgba(177, 140, 255, 0.18);
+      }
+      .card .preview {
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        background: #0b0b10;
+        overflow: hidden;
+        display: block;
+      }
+      .card .preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .card .body {
+        padding: 16px 18px 20px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .card .body h2 {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        color: #ffffff;
+      }
+      .card .body p {
+        font-size: 12px;
+        color: #888;
+      }
+
+      /* Footer ----------------------------------------------------------- */
+      footer {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 48px 32px 80px;
+        font-size: 13px;
+        color: #888;
+      }
+      footer h3 {
+        font-size: 14px;
+        font-weight: 700;
+        color: #c0c0c8;
+        margin-bottom: 8px;
+        margin-top: 24px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      footer ul { list-style: none; padding: 0; }
+      footer li { margin-bottom: 4px; }
+      footer a { user-select: text; }
+
+      @media (max-width: 600px) {
+        header { padding: 48px 20px 24px; }
+        header h1 { font-size: 32px; }
+        main { padding: 20px; }
+        .grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>
+        <span class="accent">babylon-js</span>-0x7444ff
+      </h1>
+      <p>
+        A Babylon.js port of
+        <a href="https://github.com/SahilK-027/0x7444ff" target="_blank" rel="noreferrer"
+          >SahilK-027's <code>0x7444ff</code></a
+        >
+        — 19 interactive WebGL2 demos rebuilt in
+        <a href="https://www.babylonjs.com/" target="_blank" rel="noreferrer">Babylon.js</a>.
+      </p>
+      <p>
+        Click any tile to launch the demo. Each demo's underlay credits the
+        original creator
+        <a href="https://github.com/SahilK-027" target="_blank" rel="noreferrer">@SahilK-027</a>
+        and links back to the source repo.
+      </p>
+      <p class="meta">
+        Source: <a href="https://github.com/manuelhintermayr/babylon-js-0x7444ff" target="_blank" rel="noreferrer">github.com/manuelhintermayr/babylon-js-0x7444ff</a>
+      </p>
+    </header>
+
+    <main>
+      <div class="grid">
+        <a class="card" href="./kaleidoscope/">
+          <span class="preview"><img src="./kaleidoscope/kaleidoscope.png" alt="Kaleidoscope preview" /></span>
+          <span class="body"><h2>Kaleidoscope</h2><p>Vanilla WebGL fragment kaleidoscope</p></span>
+        </a>
+        <a class="card" href="./electric_waves/">
+          <span class="preview"><img src="./electric_waves/waves.png" alt="Electric Waves preview" /></span>
+          <span class="body"><h2>Electric Waves</h2><p>100 Catmull-Rom tubes + traveling particles</p></span>
+        </a>
+        <a class="card" href="./black-pearl-flag/">
+          <span class="preview"><img src="./black-pearl-flag/flag.png" alt="Black Pearl Flag preview" /></span>
+          <span class="body"><h2>Black Pearl Flag</h2><p>Wave-displaced flag with pearl logo</p></span>
+        </a>
+        <a class="card" href="./abstract-pattern/">
+          <span class="preview"><img src="./abstract-pattern/a_pattern.png" alt="Abstract Pattern preview" /></span>
+          <span class="body"><h2>Abstract Pattern</h2><p>Stefan Gustavson 2D Perlin plane</p></span>
+        </a>
+        <a class="card" href="./peacock/">
+          <span class="preview"><img src="./peacock/peacock.png" alt="Peacock preview" /></span>
+          <span class="body"><h2>Peacock</h2><p>256² particle peacock with mouse-painted glow</p></span>
+        </a>
+        <a class="card" href="./particles-GPGPU/">
+          <span class="preview"><img src="./particles-GPGPU/particles_gpgpu.png" alt="Particles-GPGPU preview" /></span>
+          <span class="body"><h2>Particles-GPGPU</h2><p>GPGPU flow-field particles around four GLB models</p></span>
+        </a>
+        <a class="card" href="./iron-man-hologram/">
+          <span class="preview"><img src="./iron-man-hologram/ironman.png" alt="Iron Man Hologram preview" /></span>
+          <span class="body"><h2>Iron Man Hologram</h2><p>GLB mesh with glitch + fresnel-rim hologram shader</p></span>
+        </a>
+        <a class="card" href="./space-distortion/">
+          <span class="preview"><img src="./space-distortion/space_distortion.png" alt="Space Distortion preview" /></span>
+          <span class="body"><h2>Space Distortion</h2><p>RTT-based mask-warp under the cursor</p></span>
+        </a>
+        <a class="card" href="./poly-ele/">
+          <span class="preview"><img src="./poly-ele/poly_ele.png" alt="Poly Ele preview" /></span>
+          <span class="body"><h2>Poly Ele</h2><p>Polygonal elephant with per-tri pixelisation + bloom</p></span>
+        </a>
+        <a class="card" href="./glowing-phoenix/">
+          <span class="preview"><img src="./glowing-phoenix/phoenix.png" alt="Glowing Phoenix preview" /></span>
+          <span class="body"><h2>Glowing Phoenix</h2><p>GLB phoenix with mosaic + ember + 3-pass post-processing</p></span>
+        </a>
+        <a class="card" href="./perlin-noise-advanced-abstract-pattern/">
+          <span class="preview"><img src="./perlin-noise-advanced-abstract-pattern/advance_pattern.png" alt="Advanced Abstract Pattern preview" /></span>
+          <span class="body"><h2>Advanced Abstract Pattern</h2><p>1M-vertex Perlin terrain + bokeh + parallax</p></span>
+        </a>
+        <a class="card" href="./transformers-transition/">
+          <span class="preview"><img src="./transformers-transition/transformers.png" alt="Transformers Transition preview" /></span>
+          <span class="body"><h2>Transformers Transition</h2><p>Texture blend transition through square / hexagon / circle SDFs</p></span>
+        </a>
+        <a class="card" href="./wobbly-sphere/">
+          <span class="preview"><img src="./wobbly-sphere/wobbly_sphere.png" alt="Wobbly Sphere preview" /></span>
+          <span class="body"><h2>Wobbly Sphere</h2><p>PBR icosahedron with simplex-noise displacement</p></span>
+        </a>
+        <a class="card" href="./organic-pattern/">
+          <span class="preview"><img src="./organic-pattern/organic_pattern.png" alt="Organic Pattern preview" /></span>
+          <span class="body"><h2>Organic Pattern</h2><p>3D Perlin noise on a perspective plane</p></span>
+        </a>
+        <a class="card" href="./2D-day-night/">
+          <span class="preview"><img src="./2D-day-night/sdf.png" alt="2D Day-Night preview" /></span>
+          <span class="body"><h2>2D Day-Night SDF</h2><p>Procedural day-night cycle with mountains, sun, stars</p></span>
+        </a>
+        <a class="card" href="./scrolling-textures/">
+          <span class="preview"><img src="./scrolling-textures/scrolling.png" alt="Scrolling Textures preview" /></span>
+          <span class="body"><h2>Scrolling Textures</h2><p>FBM-displaced water texture loop</p></span>
+        </a>
+        <a class="card" href="./grass/">
+          <span class="preview"><img src="./grass/grass.png" alt="Grass preview" /></span>
+          <span class="body"><h2>Grass</h2><p>64 000 wind-swayed grass blades + grid floor</p></span>
+        </a>
+        <a class="card" href="./voronoi-electric-pattern/">
+          <span class="preview"><img src="./voronoi-electric-pattern/voronoi.png" alt="Voronoi Electric Pattern preview" /></span>
+          <span class="body"><h2>Voronoi Electric Pattern</h2><p>Caustic-Voronoi cube with ~80 GUI uniforms</p></span>
+        </a>
+        <a class="card" href="./spectral-flow/">
+          <span class="preview"><img src="./spectral-flow/spectral-flow.png" alt="Spectral Flow preview" /></span>
+          <span class="body"><h2>Spectral Flow</h2><p>Spectral caustic-Voronoi plane with cosine palette</p></span>
+        </a>
+      </div>
+    </main>
+
+    <footer>
+      <h3>Credits</h3>
+      <ul>
+        <li>Original demos by <a href="https://github.com/SahilK-027" target="_blank" rel="noreferrer">@SahilK-027</a> — see source repository: <a href="https://github.com/SahilK-027/0x7444ff" target="_blank" rel="noreferrer">SahilK-027/0x7444ff</a>.</li>
+        <li>Babylon.js ports by <a href="https://github.com/manuelhintermayr" target="_blank" rel="noreferrer">@manuelhintermayr</a>.</li>
+        <li>Shader noise: <a href="https://github.com/stegu/webgl-noise" target="_blank" rel="noreferrer">Stefan Gustavson</a>, Ian McEwan / Ashima Arts, <a href="https://iquilezles.org/" target="_blank" rel="noreferrer">Inigo Quilez</a>.</li>
+        <li><code>grass</code> displacement maps: <a href="https://www.filterforge.com/filters/11382-bump.html" target="_blank" rel="noreferrer">filterforge</a>, <a href="https://thedemonthrone.ca/projects/rendering-terrain/rendering-terrain-part-20-normal-and-displacement-mapping/" target="_blank" rel="noreferrer">thedemonthrone.ca</a>, <a href="https://trungduyng.substack.com/p/anime-grass-tutorial-blender" target="_blank" rel="noreferrer">@trungduyng</a>.</li>
+        <li><code>particles-GPGPU</code> models on <a href="https://sketchfab.com/" target="_blank" rel="noreferrer">Sketchfab</a>; music tracks on <a href="https://pixabay.com/" target="_blank" rel="noreferrer">Pixabay</a> (each linked in-page).</li>
+      </ul>
+      <h3>License</h3>
+      <p>MIT &mdash; matches the upstream repository. See <a href="./LICENSE">LICENSE</a>.</p>
+    </footer>
+  </body>
+</html>

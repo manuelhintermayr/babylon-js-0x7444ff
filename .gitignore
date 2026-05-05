@@ -1,0 +1,6 @@
+.claude/launch.json
+
+# Build output for static-nginx deployment.
+# Regenerated locally with `npm run build` per port (see README).
+# Don't check the 200+ MB of bundles into git.
+dist/

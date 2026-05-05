@@ -1,564 +1,649 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import GUI from 'lil-gui';
-import vertexShader from './shaders/vertex.glsl';
-import fragmentShader from './shaders/fragment.glsl';
+// Babylon.js port of `../voronoi-electric-pattern/src/main.js` (Three.js).
+//
+// 1.5×1.5×1.5 cube wrapped in a fragment shader that computes 3 nearest
+// Voronoi cell distances per pixel, builds caustic edges + glows + cell
+// lights from them, modulated by an animated swirl warp + FBM. ~80 GUI-
+// controllable uniforms across 16 folders.
+//
+// Migration notes:
+//   • THREE.BoxGeometry(1.5,1.5,1.5) → MeshBuilder.CreateBox(size:1.5).
+//   • alpha: true on the renderer → scene.clearColor.a = 0.
+//   • Vertex shader: `projectionMatrix * modelViewMatrix` → `worldViewProjection`,
+//     and the `normalMatrix * normal` substitute uses Babylon's `world` matrix
+//     (no non-uniform scaling here, so this is exact). vNormal is declared
+//     but unused by the fragment — kept for parity.
+//   • All 80+ uniforms are mirrored into a single JS state object so the
+//     onBindObservable update is a tight loop and lil-gui binds directly
+//     to the same object (matches the source's `uniforms.uFoo.value` pattern).
+//   • OrbitControls + enableDamping → ArcRotateCamera + attachControl + inertia.
+//   • Inline shader template literals — no vite-plugin-glsl needed.
 
-class ShaderRenderer {
-  constructor() {
-    // Debug
-    this.gui = new GUI();
+import { Engine } from "@babylonjs/core/Engines/engine";
+import { Scene } from "@babylonjs/core/scene";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import GUI from "lil-gui";
 
-    // Clock
-    this.clock = new THREE.Clock();
+// ── Shaders ─────────────────────────────────────────────────────────────
 
-    // Canvas
-    this.canvas = document.querySelector('canvas.webgl');
+const VERT = /* glsl */ `
+precision highp float;
+attribute vec3 position;
+attribute vec3 normal;
+attribute vec2 uv;
 
-    // Scene
-    this.scene = new THREE.Scene();
+uniform mat4 world;
+uniform mat4 worldViewProjection;
 
-    // Sizes
-    this.sizes = {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    };
+varying vec2 vUv;
+varying vec3 vWorldPos;
+varying vec3 vNormal;
 
-    this.initGeometry();
-    this.initCamera();
-    this.initRenderer();
-    this.initControls();
-    this.initGUI();
-    this.initEventListeners();
-    this.startAnimationLoop();
-  }
+void main() {
+  vUv = uv;
+  vec4 worldPos = world * vec4(position, 1.0);
+  vWorldPos = worldPos.xyz;
+  // No non-uniform scaling on this mesh, so transforming the normal by
+  // the world matrix gives the right result (the inverse-transpose
+  // collapses to the same operation).
+  vNormal = normalize((world * vec4(normal, 0.0)).xyz);
+  gl_Position = worldViewProjection * vec4(position, 1.0);
+}
+`;
 
-  initGeometry() {
-    // Geometry
-    this.geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+// Fragment shader — copied byte-for-byte from
+// `../voronoi-electric-pattern/src/shaders/fragment.glsl`.
+const FRAG = /* glsl */ `
+precision mediump float;
+uniform float uTime;
+varying vec2 vUv;
+varying vec3 vNormal;
 
-    // Material with all uniforms
-    this.material = new THREE.ShaderMaterial({
-      vertexShader: vertexShader,
-      fragmentShader: fragmentShader,
-      side: THREE.DoubleSide,
-      uniforms: {
-        uTime: { value: 0.0 },
+#define TAU 2.0 * 3.142857
 
-        // Hash function
-        uHashFract: { value: new THREE.Vector2(123.34, 456.21) },
-        uHashDot: { value: 45.32 },
+uniform vec2  uHashFract;
+uniform float uHashDot;
+uniform vec3  uRandFract;
+uniform float uRandDot;
+uniform float uNoiseSmoothness;
+uniform float uFbmAmp;
+uniform float uFbmFreq;
+uniform float uFbmFreqMult;
+uniform float uFbmAmpMult;
 
-        // Rand01
-        uRandFract: { value: new THREE.Vector3(123.5, 234.34, 345.65) },
-        uRandDot: { value: 34.45 },
+uniform float uVoronoiJitter;
+uniform float uVoronoiAnimBase;
+uniform float uVoronoiSinSpeed1;
+uniform float uVoronoiSinSpeed2;
+uniform float uVoronoiSinAmp1;
+uniform float uVoronoiSinSpeed3;
+uniform float uVoronoiSinSpeed4;
+uniform float uVoronoiSinAmp2;
+uniform float uVoronoiFbmScale1;
+uniform float uVoronoiFbmSpeed1;
+uniform float uVoronoiFbmScale2;
+uniform float uVoronoiFbmSpeed2;
+uniform float uVoronoiFbmDispl;
 
-        // Noise
-        uNoiseSmoothness: { value: 3.0 },
+uniform float uSwirlSmoothStart;
+uniform float uSwirlSmoothEnd;
+uniform float uSwirlSpeedMult;
+uniform float uSwirlNoiseAmp2;
+uniform float uSwirlNoiseScale2;
+uniform float uSwirlNoiseScale3;
+uniform float uSwirlNoiseSpeed1;
+uniform float uSwirlNoiseSpeed2;
+uniform float uSwirlNoiseSpeed3;
+uniform float uSwirlNoiseSpeed4;
+uniform float uSwirlRadialFlow;
 
-        // FBM
-        uFbmAmp: { value: 0.5 },
-        uFbmFreq: { value: 2.0 },
-        uFbmFreqMult: { value: 2.1 },
-        uFbmAmpMult: { value: 0.5 },
+uniform float uCellCount2;
+uniform float uCellCount3;
 
-        // Voronoi
-        uVoronoiJitter: { value: 0.5 },
-        uVoronoiAnimBase: { value: 0.08 },
-        uVoronoiSinSpeed1: { value: 0.6 },
-        uVoronoiSinSpeed2: { value: 0.8 },
-        uVoronoiSinAmp1: { value: 0.6 },
-        uVoronoiSinSpeed3: { value: 0.5 },
-        uVoronoiSinSpeed4: { value: 0.7 },
-        uVoronoiSinAmp2: { value: 0.5 },
-        uVoronoiFbmScale1: { value: 0.4 },
-        uVoronoiFbmSpeed1: { value: 0.06 },
-        uVoronoiFbmScale2: { value: 0.45 },
-        uVoronoiFbmSpeed2: { value: 0.04 },
-        uVoronoiFbmDispl: { value: 0.08 },
+uniform float uLayer2Speed;
+uniform float uLayer2Twist;
+uniform float uLayer2NoiseScale;
+uniform float uLayer2NoiseAmp;
+uniform float uLayer2TimeSpeed;
+uniform float uLayer2Seed;
 
-        // Swirl
-        uSwirlSmoothStart: { value: 0.0 },
-        uSwirlSmoothEnd: { value: 0.5 },
-        uSwirlSpeedMult: { value: 3.0 },
-        uSwirlNoiseAmp2: { value: 0.6 },
-        uSwirlNoiseScale2: { value: 1.5 },
-        uSwirlNoiseScale3: { value: 0.7 },
-        uSwirlNoiseSpeed1: { value: 0.15 },
-        uSwirlNoiseSpeed2: { value: 0.1 },
-        uSwirlNoiseSpeed3: { value: 0.08 },
-        uSwirlNoiseSpeed4: { value: 0.06 },
-        uSwirlRadialFlow: { value: 0.04 },
+uniform float uLayer3Speed;
+uniform float uLayer3Twist;
+uniform float uLayer3NoiseScale;
+uniform float uLayer3NoiseAmp;
+uniform float uLayer3TimeSpeed;
+uniform float uLayer3Seed;
 
-        // Cell counts
-        uCellCount2: { value: 2.5 },
-        uCellCount3: { value: 3.5 },
+uniform float uEdgeNoiseScale;
+uniform float uEdgeNoiseSpeed;
+uniform float uEdgeWidthMin;
+uniform float uEdgeWidthMax;
+uniform float uBaseWidth;
 
-        // Layer 2
-        uLayer2Speed: { value: -0.4 },
-        uLayer2Twist: { value: 0.6 },
-        uLayer2NoiseScale: { value: 6.0 },
-        uLayer2NoiseAmp: { value: 0.7 },
-        uLayer2TimeSpeed: { value: 1.4 },
-        uLayer2Seed: { value: 77.0 },
+uniform float uSecondaryEdgeWidth;
+uniform float uSecondaryEdgePow;
+uniform float uSecondaryEdgeStrength;
 
-        // Layer 3
-        uLayer3Speed: { value: 0.3 },
-        uLayer3Twist: { value: 0.8 },
-        uLayer3NoiseScale: { value: 3.0 },
-        uLayer3NoiseAmp: { value: 1.2 },
-        uLayer3TimeSpeed: { value: 0.8 },
-        uLayer3Seed: { value: 133.0 },
+uniform float uTertiaryEdgeWidth;
+uniform float uTertiaryEdgePow;
+uniform float uTertiaryEdgeStrength;
 
-        // Edges
-        uEdgeNoiseScale: { value: 2.0 },
-        uEdgeNoiseSpeed: { value: 0.12 },
-        uEdgeWidthMin: { value: 0.6 },
-        uEdgeWidthMax: { value: 1.8 },
-        uBaseWidth: { value: 0.015 },
+uniform float uGlow2Start;
+uniform float uGlow2End;
+uniform float uGlow2Pow;
+uniform float uGlow2Strength;
 
-        uSecondaryEdgeWidth: { value: 1.8 },
-        uSecondaryEdgePow: { value: 3.5 },
-        uSecondaryEdgeStrength: { value: 0.9 },
+uniform float uGlow3Start;
+uniform float uGlow3End;
+uniform float uGlow3Pow;
+uniform float uGlow3Strength;
 
-        uTertiaryEdgeWidth: { value: 2.5 },
-        uTertiaryEdgePow: { value: 2.0 },
-        uTertiaryEdgeStrength: { value: 0.5 },
+uniform float uJunctionWidth;
+uniform float uJunctionPow;
+uniform float uJunctionStrength;
 
-        // Glows
-        uGlow2Start: { value: 1.0 },
-        uGlow2End: { value: 8.0 },
-        uGlow2Pow: { value: 4.5 },
-        uGlow2Strength: { value: 0.45 },
+uniform float uColorNoise2Scale;
+uniform float uColorNoise2Speed;
+uniform float uColorNoise3Scale;
+uniform float uColorNoise3Speed;
+uniform float uEdgeBrightnessMin;
+uniform float uEdgeBrightnessMax;
 
-        uGlow3Start: { value: 2.0 },
-        uGlow3End: { value: 10.0 },
-        uGlow3Pow: { value: 4.0 },
-        uGlow3Strength: { value: 0.28 },
+uniform float uCellLight2Mult;
+uniform float uCellLight2Strength;
+uniform float uCellLight3Mult;
+uniform float uCellLight3Strength;
 
-        // Junction
-        uJunctionWidth: { value: 3.0 },
-        uJunctionPow: { value: 8.0 },
-        uJunctionStrength: { value: 1.4 },
+uniform float uBgNoiseScale;
+uniform float uBgNoiseSpeed;
+uniform float uBgDetailScale;
+uniform float uBgDetailSpeed;
+uniform float uBgValueMin;
+uniform float uBgValueMax;
+uniform float uBgNoiseStrength;
+uniform float uBgDetailStrength;
+uniform vec3  uBgColor;
 
-        // Color noise
-        uColorNoise2Scale: { value: 5.0 },
-        uColorNoise2Speed: { value: 0.25 },
-        uColorNoise3Scale: { value: 3.0 },
-        uColorNoise3Speed: { value: 0.15 },
-        uEdgeBrightnessMin: { value: 0.6 },
-        uEdgeBrightnessMax: { value: 1.0 },
+uniform float uSecondaryWeight;
+uniform float uTertiaryWeight;
+uniform float uGlow2Weight;
+uniform float uGlow3Weight;
+uniform float uJunctionWeight;
 
-        // Cell lights
-        uCellLight2Mult: { value: 15.0 },
-        uCellLight2Strength: { value: 0.35 },
-        uCellLight3Mult: { value: 8.0 },
-        uCellLight3Strength: { value: 0.18 },
+uniform vec3  uColorShift;
+uniform float uColorMultiplier;
+uniform float uColorGamma;
 
-        // Background
-        uBgNoiseScale: { value: 2.5 },
-        uBgNoiseSpeed: { value: 0.06 },
-        uBgDetailScale: { value: 1.5 },
-        uBgDetailSpeed: { value: 0.04 },
-        uBgValueMin: { value: 0.05 },
-        uBgValueMax: { value: 0.25 },
-        uBgNoiseStrength: { value: 0.04 },
-        uBgDetailStrength: { value: 0.02 },
-        uBgColor: { value: new THREE.Color(0.5, 0.5, 0.5) },
+uniform float uFresnelPow;
+uniform float uFresnelStrength;
 
-        // Caustic weights
-        uSecondaryWeight: { value: 1.2 },
-        uTertiaryWeight: { value: 0.8 },
-        uGlow2Weight: { value: 0.9 },
-        uGlow3Weight: { value: 0.6 },
-        uJunctionWeight: { value: 0.9 },
-
-        // Color shift
-        uColorShift: { value: new THREE.Color(0.2, 0.4, 1.0) },
-
-        // Color grading
-        uColorMultiplier: { value: 3.2 },
-        uColorGamma: { value: 0.82 },
-
-        // Fresnel
-        uFresnelPow: { value: 2.0 },
-        uFresnelStrength: { value: 0.3 },
-      },
-    });
-
-    // Mesh
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
-    this.scene.add(this.mesh);
-  }
-
-  initCamera() {
-    // Base camera
-    this.camera = new THREE.PerspectiveCamera(
-      75,
-      this.sizes.width / this.sizes.height,
-      0.1,
-      100
-    );
-    this.camera.position.set(0, 0, 2.5);
-    this.scene.add(this.camera);
-  }
-
-  initRenderer() {
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas,
-      alpha: true,
-    });
-    this.renderer.setSize(this.sizes.width, this.sizes.height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  }
-
-  initControls() {
-    this.controls = new OrbitControls(this.camera, this.canvas);
-    this.controls.enableDamping = true;
-  }
-
-  initGUI() {
-    const uniforms = this.material.uniforms;
-
-    // Cell Counts
-    const cellFolder = this.gui.addFolder('Cell Counts');
-    cellFolder
-      .add(uniforms.uCellCount2, 'value', 1, 10, 0.1)
-      .name('Cell Count 2');
-    cellFolder
-      .add(uniforms.uCellCount3, 'value', 1, 10, 0.1)
-      .name('Cell Count 3');
-
-    // Layer 2
-    const layer2Folder = this.gui.addFolder('Layer 2');
-    layer2Folder.add(uniforms.uLayer2Speed, 'value', -2, 2, 0.1).name('Speed');
-    layer2Folder.add(uniforms.uLayer2Twist, 'value', 0, 2, 0.1).name('Twist');
-    layer2Folder
-      .add(uniforms.uLayer2NoiseScale, 'value', 1, 20, 0.5)
-      .name('Noise Scale');
-    layer2Folder
-      .add(uniforms.uLayer2NoiseAmp, 'value', 0, 3, 0.1)
-      .name('Noise Amp');
-    layer2Folder
-      .add(uniforms.uLayer2TimeSpeed, 'value', 0, 5, 0.1)
-      .name('Time Speed');
-    layer2Folder.add(uniforms.uLayer2Seed, 'value', 0, 200, 1).name('Seed');
-
-    // Layer 3
-    const layer3Folder = this.gui.addFolder('Layer 3');
-    layer3Folder.add(uniforms.uLayer3Speed, 'value', -2, 2, 0.1).name('Speed');
-    layer3Folder.add(uniforms.uLayer3Twist, 'value', 0, 2, 0.1).name('Twist');
-    layer3Folder
-      .add(uniforms.uLayer3NoiseScale, 'value', 1, 20, 0.5)
-      .name('Noise Scale');
-    layer3Folder
-      .add(uniforms.uLayer3NoiseAmp, 'value', 0, 3, 0.1)
-      .name('Noise Amp');
-    layer3Folder
-      .add(uniforms.uLayer3TimeSpeed, 'value', 0, 5, 0.1)
-      .name('Time Speed');
-    layer3Folder.add(uniforms.uLayer3Seed, 'value', 0, 200, 1).name('Seed');
-
-    // Edges
-    const edgesFolder = this.gui.addFolder('Edges');
-    edgesFolder
-      .add(uniforms.uEdgeNoiseScale, 'value', 0.5, 5, 0.1)
-      .name('Edge Noise Scale');
-    edgesFolder
-      .add(uniforms.uEdgeNoiseSpeed, 'value', 0, 0.5, 0.01)
-      .name('Edge Noise Speed');
-    edgesFolder
-      .add(uniforms.uEdgeWidthMin, 'value', 0.1, 3, 0.1)
-      .name('Edge Width Min');
-    edgesFolder
-      .add(uniforms.uEdgeWidthMax, 'value', 0.1, 5, 0.1)
-      .name('Edge Width Max');
-    edgesFolder
-      .add(uniforms.uBaseWidth, 'value', 0.001, 0.1, 0.001)
-      .name('Base Width');
-    edgesFolder
-      .add(uniforms.uSecondaryEdgeWidth, 'value', 0.5, 5, 0.1)
-      .name('Secondary Width');
-    edgesFolder
-      .add(uniforms.uSecondaryEdgePow, 'value', 1, 10, 0.1)
-      .name('Secondary Pow');
-    edgesFolder
-      .add(uniforms.uSecondaryEdgeStrength, 'value', 0, 2, 0.1)
-      .name('Secondary Strength');
-    edgesFolder
-      .add(uniforms.uTertiaryEdgeWidth, 'value', 0.5, 5, 0.1)
-      .name('Tertiary Width');
-    edgesFolder
-      .add(uniforms.uTertiaryEdgePow, 'value', 1, 10, 0.1)
-      .name('Tertiary Pow');
-    edgesFolder
-      .add(uniforms.uTertiaryEdgeStrength, 'value', 0, 2, 0.1)
-      .name('Tertiary Strength');
-
-    // Glows
-    const glowsFolder = this.gui.addFolder('Glows');
-    glowsFolder
-      .add(uniforms.uGlow2Start, 'value', 0.1, 5, 0.1)
-      .name('Glow 2 Start');
-    glowsFolder.add(uniforms.uGlow2End, 'value', 1, 20, 0.5).name('Glow 2 End');
-    glowsFolder.add(uniforms.uGlow2Pow, 'value', 1, 10, 0.1).name('Glow 2 Pow');
-    glowsFolder
-      .add(uniforms.uGlow2Strength, 'value', 0, 2, 0.05)
-      .name('Glow 2 Strength');
-    glowsFolder
-      .add(uniforms.uGlow3Start, 'value', 0.1, 5, 0.1)
-      .name('Glow 3 Start');
-    glowsFolder.add(uniforms.uGlow3End, 'value', 1, 20, 0.5).name('Glow 3 End');
-    glowsFolder.add(uniforms.uGlow3Pow, 'value', 1, 10, 0.1).name('Glow 3 Pow');
-    glowsFolder
-      .add(uniforms.uGlow3Strength, 'value', 0, 2, 0.05)
-      .name('Glow 3 Strength');
-
-    // Junction
-    const junctionFolder = this.gui.addFolder('Junction');
-    junctionFolder
-      .add(uniforms.uJunctionWidth, 'value', 0.5, 10, 0.1)
-      .name('Width');
-    junctionFolder
-      .add(uniforms.uJunctionPow, 'value', 1, 15, 0.5)
-      .name('Power');
-    junctionFolder
-      .add(uniforms.uJunctionStrength, 'value', 0, 5, 0.1)
-      .name('Strength');
-
-    // Color Noise
-    const colorNoiseFolder = this.gui.addFolder('Color Noise');
-    colorNoiseFolder
-      .add(uniforms.uColorNoise2Scale, 'value', 1, 20, 0.5)
-      .name('Noise 2 Scale');
-    colorNoiseFolder
-      .add(uniforms.uColorNoise2Speed, 'value', 0, 1, 0.01)
-      .name('Noise 2 Speed');
-    colorNoiseFolder
-      .add(uniforms.uColorNoise3Scale, 'value', 1, 20, 0.5)
-      .name('Noise 3 Scale');
-    colorNoiseFolder
-      .add(uniforms.uColorNoise3Speed, 'value', 0, 1, 0.01)
-      .name('Noise 3 Speed');
-    colorNoiseFolder
-      .add(uniforms.uEdgeBrightnessMin, 'value', 0, 1, 0.05)
-      .name('Brightness Min');
-    colorNoiseFolder
-      .add(uniforms.uEdgeBrightnessMax, 'value', 0, 2, 0.05)
-      .name('Brightness Max');
-
-    // Cell Lights
-    const cellLightsFolder = this.gui.addFolder('Cell Lights');
-    cellLightsFolder
-      .add(uniforms.uCellLight2Mult, 'value', 1, 50, 1)
-      .name('Light 2 Mult');
-    cellLightsFolder
-      .add(uniforms.uCellLight2Strength, 'value', 0, 1, 0.05)
-      .name('Light 2 Strength');
-    cellLightsFolder
-      .add(uniforms.uCellLight3Mult, 'value', 1, 50, 1)
-      .name('Light 3 Mult');
-    cellLightsFolder
-      .add(uniforms.uCellLight3Strength, 'value', 0, 1, 0.05)
-      .name('Light 3 Strength');
-
-    // Background
-    const bgFolder = this.gui.addFolder('Background');
-    bgFolder
-      .add(uniforms.uBgNoiseScale, 'value', 0.5, 10, 0.1)
-      .name('Noise Scale');
-    bgFolder
-      .add(uniforms.uBgNoiseSpeed, 'value', 0, 0.3, 0.01)
-      .name('Noise Speed');
-    bgFolder
-      .add(uniforms.uBgDetailScale, 'value', 0.5, 10, 0.1)
-      .name('Detail Scale');
-    bgFolder
-      .add(uniforms.uBgDetailSpeed, 'value', 0, 0.3, 0.01)
-      .name('Detail Speed');
-    bgFolder.add(uniforms.uBgValueMin, 'value', 0, 0.5, 0.01).name('Value Min');
-    bgFolder.add(uniforms.uBgValueMax, 'value', 0, 1, 0.05).name('Value Max');
-    bgFolder
-      .add(uniforms.uBgNoiseStrength, 'value', 0, 0.2, 0.01)
-      .name('Noise Strength');
-    bgFolder
-      .add(uniforms.uBgDetailStrength, 'value', 0, 0.2, 0.01)
-      .name('Detail Strength');
-
-    // Caustic Weights
-    const weightsFolder = this.gui.addFolder('Caustic Weights');
-    weightsFolder
-      .add(uniforms.uSecondaryWeight, 'value', 0, 3, 0.1)
-      .name('Secondary');
-    weightsFolder
-      .add(uniforms.uTertiaryWeight, 'value', 0, 3, 0.1)
-      .name('Tertiary');
-    weightsFolder.add(uniforms.uGlow2Weight, 'value', 0, 3, 0.1).name('Glow 2');
-    weightsFolder.add(uniforms.uGlow3Weight, 'value', 0, 3, 0.1).name('Glow 3');
-    weightsFolder
-      .add(uniforms.uJunctionWeight, 'value', 0, 3, 0.1)
-      .name('Junction');
-
-    // Color Grading
-    const gradingFolder = this.gui.addFolder('Color Grading');
-    gradingFolder
-      .add(uniforms.uColorMultiplier, 'value', 0.5, 10, 0.1)
-      .name('Multiplier');
-    gradingFolder
-      .add(uniforms.uColorGamma, 'value', 0.3, 2, 0.01)
-      .name('Gamma');
-
-    // Voronoi Animation
-    const voronoiFolder = this.gui.addFolder('Voronoi Animation');
-    voronoiFolder
-      .add(uniforms.uVoronoiJitter, 'value', 0, 1, 0.05)
-      .name('Jitter');
-    voronoiFolder
-      .add(uniforms.uVoronoiAnimBase, 'value', 0, 0.3, 0.01)
-      .name('Anim Base');
-    voronoiFolder
-      .add(uniforms.uVoronoiSinSpeed1, 'value', 0, 2, 0.1)
-      .name('Sin Speed 1');
-    voronoiFolder
-      .add(uniforms.uVoronoiSinSpeed2, 'value', 0, 2, 0.1)
-      .name('Sin Speed 2');
-    voronoiFolder
-      .add(uniforms.uVoronoiSinAmp1, 'value', 0, 2, 0.1)
-      .name('Sin Amp 1');
-    voronoiFolder
-      .add(uniforms.uVoronoiSinSpeed3, 'value', 0, 2, 0.1)
-      .name('Sin Speed 3');
-    voronoiFolder
-      .add(uniforms.uVoronoiSinSpeed4, 'value', 0, 2, 0.1)
-      .name('Sin Speed 4');
-    voronoiFolder
-      .add(uniforms.uVoronoiSinAmp2, 'value', 0, 2, 0.1)
-      .name('Sin Amp 2');
-    voronoiFolder
-      .add(uniforms.uVoronoiFbmScale1, 'value', 0.1, 2, 0.05)
-      .name('FBM Scale 1');
-    voronoiFolder
-      .add(uniforms.uVoronoiFbmSpeed1, 'value', 0, 0.3, 0.01)
-      .name('FBM Speed 1');
-    voronoiFolder
-      .add(uniforms.uVoronoiFbmScale2, 'value', 0.1, 2, 0.05)
-      .name('FBM Scale 2');
-    voronoiFolder
-      .add(uniforms.uVoronoiFbmSpeed2, 'value', 0, 0.3, 0.01)
-      .name('FBM Speed 2');
-    voronoiFolder
-      .add(uniforms.uVoronoiFbmDispl, 'value', 0, 0.3, 0.01)
-      .name('FBM Displ');
-
-    // Swirl
-    const swirlFolder = this.gui.addFolder('Swirl');
-    swirlFolder
-      .add(uniforms.uSwirlSmoothStart, 'value', 0, 1, 0.05)
-      .name('Smooth Start');
-    swirlFolder
-      .add(uniforms.uSwirlSmoothEnd, 'value', 0, 1, 0.05)
-      .name('Smooth End');
-    swirlFolder
-      .add(uniforms.uSwirlSpeedMult, 'value', 0, 10, 0.1)
-      .name('Speed Mult');
-    swirlFolder
-      .add(uniforms.uSwirlNoiseAmp2, 'value', 0, 2, 0.1)
-      .name('Noise Amp 2');
-    swirlFolder
-      .add(uniforms.uSwirlNoiseScale2, 'value', 0.5, 5, 0.1)
-      .name('Noise Scale 2');
-    swirlFolder
-      .add(uniforms.uSwirlNoiseScale3, 'value', 0.5, 5, 0.1)
-      .name('Noise Scale 3');
-    swirlFolder
-      .add(uniforms.uSwirlNoiseSpeed1, 'value', 0, 0.5, 0.01)
-      .name('Noise Speed 1');
-    swirlFolder
-      .add(uniforms.uSwirlNoiseSpeed2, 'value', 0, 0.5, 0.01)
-      .name('Noise Speed 2');
-    swirlFolder
-      .add(uniforms.uSwirlNoiseSpeed3, 'value', 0, 0.5, 0.01)
-      .name('Noise Speed 3');
-    swirlFolder
-      .add(uniforms.uSwirlNoiseSpeed4, 'value', 0, 0.5, 0.01)
-      .name('Noise Speed 4');
-    swirlFolder
-      .add(uniforms.uSwirlRadialFlow, 'value', 0, 0.2, 0.01)
-      .name('Radial Flow');
-
-    // FBM
-    const fbmFolder = this.gui.addFolder('FBM');
-    fbmFolder.add(uniforms.uFbmAmp, 'value', 0, 2, 0.1).name('Amplitude');
-    fbmFolder.add(uniforms.uFbmFreq, 'value', 0.5, 10, 0.1).name('Frequency');
-    fbmFolder.add(uniforms.uFbmFreqMult, 'value', 1, 5, 0.1).name('Freq Mult');
-    fbmFolder.add(uniforms.uFbmAmpMult, 'value', 0.1, 1, 0.05).name('Amp Mult');
-
-    // Noise
-    const noiseFolder = this.gui.addFolder('Noise');
-    noiseFolder
-      .add(uniforms.uNoiseSmoothness, 'value', 2, 5, 0.1)
-      .name('Smoothness');
-
-    // Fresnel
-    const fresnelFolder = this.gui.addFolder('Fresnel');
-    fresnelFolder.add(uniforms.uFresnelPow, 'value', 1, 5, 0.1).name('Power');
-    fresnelFolder
-      .add(uniforms.uFresnelStrength, 'value', 0, 1, 0.05)
-      .name('Strength');
-
-    // Close all folders by default
-    cellFolder.close();
-    layer2Folder.close();
-    layer3Folder.close();
-    edgesFolder.close();
-    glowsFolder.close();
-    junctionFolder.close();
-    colorNoiseFolder.close();
-    cellLightsFolder.close();
-    bgFolder.close();
-    weightsFolder.close();
-    gradingFolder.close();
-    voronoiFolder.close();
-    swirlFolder.close();
-    fbmFolder.close();
-    noiseFolder.close();
-    fresnelFolder.close();
-  }
-
-  initEventListeners() {
-    window.addEventListener('resize', () => this.handleResize());
-  }
-
-  handleResize() {
-    // Update sizes
-    this.sizes.width = window.innerWidth;
-    this.sizes.height = window.innerHeight;
-
-    // Update camera
-    this.camera.aspect = this.sizes.width / this.sizes.height;
-    this.camera.updateProjectionMatrix();
-
-    // Update renderer
-    this.renderer.setSize(this.sizes.width, this.sizes.height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  }
-
-  animate() {
-    this.material.uniforms.uTime.value = this.clock.getElapsedTime();
-    // Update controls
-    this.controls.update();
-
-    // Render
-    this.renderer.render(this.scene, this.camera);
-
-    // Call animate again on the next frame
-    window.requestAnimationFrame(() => this.animate());
-  }
-
-  startAnimationLoop() {
-    this.animate();
-  }
+float hash(vec2 p) {
+  p = fract(p * uHashFract);
+  p += dot(p, p + uHashDot);
+  return fract(p.x * p.y);
 }
 
-// Initialize the renderer when the script loads
-const shaderRenderer = new ShaderRenderer();
+vec2 rand01(vec2 p) {
+  vec3 a = fract(p.xyx * uRandFract);
+  a += dot(a, a + uRandDot);
+  return fract(vec2(a.x * a.y, a.y * a.z));
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (uNoiseSmoothness - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float value = 0.0;
+  float amp = uFbmAmp;
+  float freq = uFbmFreq;
+  for (int i = 0; i < 1; i++) {
+    value += amp * noise(p * freq);
+    freq *= uFbmFreqMult;
+    amp  *= uFbmAmpMult;
+  }
+  return value;
+}
+
+vec3 voronoiF1F2F3(vec2 uv, float time, float seed, float cells) {
+  float INF = 1e6;
+  float min1 = INF;
+  float min2 = INF;
+  float min3 = INF;
+
+  vec2 cellUv    = fract(uv * cells) - 0.5;
+  vec2 cellCoord = floor(uv * cells);
+
+  for (float xo = -1.0; xo <= 1.0; xo += 1.0) {
+    for (float yo = -1.0; yo <= 1.0; yo += 1.0) {
+      vec2 off = vec2(xo, yo);
+      vec2 nc  = cellCoord + off;
+      vec2 r   = rand01(nc + seed);
+      vec2 jitter = (r - 0.5) * uVoronoiJitter;
+
+      vec2 sinPart = vec2(
+        sin(time * uVoronoiSinSpeed1 + r.x * TAU) + uVoronoiSinAmp1 * cos(time * uVoronoiSinSpeed2 + r.x * TAU * uVoronoiSinAmp1),
+        cos(time * uVoronoiSinSpeed3 + r.y * TAU) + uVoronoiSinAmp2 * sin(time * uVoronoiSinSpeed4 + r.y * TAU * uVoronoiSinSpeed2)
+      ) * uVoronoiAnimBase;
+
+      vec2 fb = vec2(
+        fbm(nc * uVoronoiFbmScale1 + vec2(time * uVoronoiFbmSpeed1)),
+        fbm(nc * uVoronoiFbmScale2 - vec2(time * uVoronoiFbmSpeed2))
+      );
+      vec2 fbDispl = (fb - 0.5) * uVoronoiFbmDispl;
+
+      vec2 point = off + jitter + sinPart + fbDispl;
+      float d = length(cellUv - point);
+
+      if (d < min1)      { min3 = min2; min2 = min1; min1 = d; }
+      else if (d < min2) { min3 = min2; min2 = d; }
+      else if (d < min3) { min3 = d; }
+    }
+  }
+  return vec3(min1, min2, min3);
+}
+
+vec2 organicSwirlUV(vec2 uv, float speed, float twist, float noiseScale, float noiseAmp) {
+  vec2 c = uv - 0.5;
+  float r = length(c);
+  float a = atan(c.y, c.x);
+
+  float n  = fbm(uv * noiseScale + vec2(uTime * uSwirlNoiseSpeed1));
+  float n2 = fbm(uv * (noiseScale * uSwirlNoiseScale2) - vec2(uTime * uSwirlNoiseSpeed2));
+  float n3 = fbm(uv * (noiseScale * uSwirlNoiseScale3) + vec2(uTime * uSwirlNoiseSpeed3, -uTime * uSwirlNoiseSpeed4));
+
+  float fall = smoothstep(uSwirlSmoothStart, uSwirlSmoothEnd, r);
+  a += speed * uSwirlSpeedMult * fall + twist * r * r + (n - 0.5) * noiseAmp + (n2 - 0.5) * noiseAmp * uSwirlNoiseAmp2;
+
+  float radialFlow = (n3 - 0.5) * uSwirlRadialFlow * fall;
+  r = max(0.0, r + radialFlow);
+
+  vec2 rotated = vec2(cos(a), sin(a)) * r;
+  return rotated + 0.5;
+}
+
+void main() {
+  vec2 baseUV = vUv;
+
+  vec2 uv2 = organicSwirlUV(baseUV, uLayer2Speed, uLayer2Twist, uLayer2NoiseScale, uLayer2NoiseAmp);
+  vec3 F2  = voronoiF1F2F3(uv2, uTime * uLayer2TimeSpeed, uLayer2Seed, uCellCount2);
+
+  vec2 uv3 = organicSwirlUV(baseUV, uLayer3Speed, uLayer3Twist, uLayer3NoiseScale, uLayer3NoiseAmp);
+  vec3 F3  = voronoiF1F2F3(uv3, uTime * uLayer3TimeSpeed, uLayer3Seed, uCellCount3);
+
+  float e12_2 = F2.y - F2.x;
+  float e12_3 = F3.y - F3.x;
+
+  float edgeNoise = fbm(uv2 * uCellCount2 * uEdgeNoiseScale + vec2(uTime * uEdgeNoiseSpeed));
+  float widthMod  = mix(uEdgeWidthMin, uEdgeWidthMax, edgeNoise);
+  float baseWidth = uBaseWidth * widthMod;
+
+  float secondaryEdge = pow(1.0 - smoothstep(0.0, baseWidth * uSecondaryEdgeWidth, e12_2), uSecondaryEdgePow) * uSecondaryEdgeStrength;
+  float tertiaryEdge  = pow(1.0 - smoothstep(0.0, baseWidth * uTertiaryEdgeWidth,  e12_3), uTertiaryEdgePow)  * uTertiaryEdgeStrength;
+
+  float glow2 = pow(1.0 - smoothstep(baseWidth * uGlow2Start, baseWidth * uGlow2End, e12_2), uGlow2Pow) * uGlow2Strength;
+  float glow3 = pow(1.0 - smoothstep(baseWidth * uGlow3Start, baseWidth * uGlow3End, e12_3), uGlow3Pow) * uGlow3Strength;
+
+  float junction2 = pow(1.0 - smoothstep(0.0, baseWidth * uJunctionWidth, e12_2 + (F2.z - F2.y)), uJunctionPow) * uJunctionStrength;
+
+  float colorNoise2 = noise(uv2 * uCellCount2 * uColorNoise2Scale + vec2(uTime * uColorNoise2Speed));
+  float colorNoise3 = noise(uv3 * uCellCount3 * uColorNoise3Scale - vec2(uTime * uColorNoise3Speed));
+  float edgeBrightness = mix(uEdgeBrightnessMin, uEdgeBrightnessMax, colorNoise2);
+
+  float cellLight2 = exp(-F2.x * F2.x * uCellLight2Mult) * uCellLight2Strength;
+  float cellLight3 = exp(-F3.x * F3.x * uCellLight3Mult) * uCellLight3Strength;
+
+  float bgNoise  = fbm(uv2 * uCellCount2 * uBgNoiseScale  + vec2(uTime * uBgNoiseSpeed));
+  float bgDetail = fbm(uv3 * uCellCount3 * uBgDetailScale - vec2(uTime * uBgDetailSpeed)) * 0.5;
+
+  float bgValue  = mix(uBgValueMin, uBgValueMax, cellLight2 + cellLight3);
+  bgValue       += bgNoise * uBgNoiseStrength + bgDetail * uBgDetailStrength;
+
+  vec3 baseColor = vec3(bgValue) * uBgColor;
+
+  vec3 causticColor = vec3(edgeBrightness);
+  vec3 color = baseColor;
+
+  color += causticColor * (secondaryEdge * uSecondaryWeight + tertiaryEdge * uTertiaryWeight);
+  color += causticColor * (glow2 * uGlow2Weight + glow3 * uGlow3Weight);
+  color += vec3(0.9, 0.96, 1.0) * (junction2 * uJunctionWeight);
+
+  color *= uColorShift;
+  color = clamp(color, 0.0, 1.0) * uColorMultiplier;
+  color = pow(color, vec3(uColorGamma));
+
+  gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+// ── Engine + scene ──────────────────────────────────────────────────────
+
+const canvas = document.querySelector("canvas.webgl");
+
+const engine = new Engine(canvas, true, {
+  preserveDrawingBuffer: false,
+  stencil: false,
+});
+engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+
+const scene = new Scene(engine);
+scene.clearColor = new Color4(0, 0, 0, 0);   // alpha:true equivalent
+
+const camera = new ArcRotateCamera("camera", 0, Math.PI / 2, 1, Vector3.Zero(), scene);
+camera.setPosition(new Vector3(0, 0, 2.5));
+camera.minZ = 0.1;
+camera.maxZ = 100;
+camera.fov  = (75 * Math.PI) / 180;
+camera.inertia = 0.85;
+camera.attachControl(canvas, true);
+
+// ── Mesh ────────────────────────────────────────────────────────────────
+
+const cube = MeshBuilder.CreateBox("cube", { size: 1.5 }, scene);
+
+// ── Uniform state — single JS object both pushed to GPU and bound to GUI ─
+
+const params = {
+  uHashFract: [123.34, 456.21],
+  uHashDot:    45.32,
+  uRandFract: [123.5, 234.34, 345.65],
+  uRandDot:    34.45,
+  uNoiseSmoothness: 3.0,
+  uFbmAmp:      0.5,
+  uFbmFreq:     2.0,
+  uFbmFreqMult: 2.1,
+  uFbmAmpMult:  0.5,
+  uVoronoiJitter:    0.5,
+  uVoronoiAnimBase:  0.08,
+  uVoronoiSinSpeed1: 0.6,
+  uVoronoiSinSpeed2: 0.8,
+  uVoronoiSinAmp1:   0.6,
+  uVoronoiSinSpeed3: 0.5,
+  uVoronoiSinSpeed4: 0.7,
+  uVoronoiSinAmp2:   0.5,
+  uVoronoiFbmScale1: 0.4,
+  uVoronoiFbmSpeed1: 0.06,
+  uVoronoiFbmScale2: 0.45,
+  uVoronoiFbmSpeed2: 0.04,
+  uVoronoiFbmDispl:  0.08,
+  uSwirlSmoothStart: 0.0,
+  uSwirlSmoothEnd:   0.5,
+  uSwirlSpeedMult:   3.0,
+  uSwirlNoiseAmp2:   0.6,
+  uSwirlNoiseScale2: 1.5,
+  uSwirlNoiseScale3: 0.7,
+  uSwirlNoiseSpeed1: 0.15,
+  uSwirlNoiseSpeed2: 0.10,
+  uSwirlNoiseSpeed3: 0.08,
+  uSwirlNoiseSpeed4: 0.06,
+  uSwirlRadialFlow:  0.04,
+  uCellCount2: 2.5,
+  uCellCount3: 3.5,
+  uLayer2Speed:      -0.4,
+  uLayer2Twist:       0.6,
+  uLayer2NoiseScale:  6.0,
+  uLayer2NoiseAmp:    0.7,
+  uLayer2TimeSpeed:   1.4,
+  uLayer2Seed:       77.0,
+  uLayer3Speed:       0.3,
+  uLayer3Twist:       0.8,
+  uLayer3NoiseScale:  3.0,
+  uLayer3NoiseAmp:    1.2,
+  uLayer3TimeSpeed:   0.8,
+  uLayer3Seed:      133.0,
+  uEdgeNoiseScale: 2.0,
+  uEdgeNoiseSpeed: 0.12,
+  uEdgeWidthMin:   0.6,
+  uEdgeWidthMax:   1.8,
+  uBaseWidth:      0.015,
+  uSecondaryEdgeWidth:    1.8,
+  uSecondaryEdgePow:      3.5,
+  uSecondaryEdgeStrength: 0.9,
+  uTertiaryEdgeWidth:     2.5,
+  uTertiaryEdgePow:       2.0,
+  uTertiaryEdgeStrength:  0.5,
+  uGlow2Start: 1.0, uGlow2End: 8.0,  uGlow2Pow: 4.5, uGlow2Strength: 0.45,
+  uGlow3Start: 2.0, uGlow3End: 10.0, uGlow3Pow: 4.0, uGlow3Strength: 0.28,
+  uJunctionWidth:    3.0,
+  uJunctionPow:      8.0,
+  uJunctionStrength: 1.4,
+  uColorNoise2Scale: 5.0, uColorNoise2Speed: 0.25,
+  uColorNoise3Scale: 3.0, uColorNoise3Speed: 0.15,
+  uEdgeBrightnessMin: 0.6, uEdgeBrightnessMax: 1.0,
+  uCellLight2Mult: 15.0, uCellLight2Strength: 0.35,
+  uCellLight3Mult:  8.0, uCellLight3Strength: 0.18,
+  uBgNoiseScale: 2.5, uBgNoiseSpeed: 0.06,
+  uBgDetailScale: 1.5, uBgDetailSpeed: 0.04,
+  uBgValueMin: 0.05, uBgValueMax: 0.25,
+  uBgNoiseStrength: 0.04, uBgDetailStrength: 0.02,
+  uBgColor: [0.5, 0.5, 0.5],
+  uSecondaryWeight: 1.2, uTertiaryWeight: 0.8,
+  uGlow2Weight: 0.9, uGlow3Weight: 0.6, uJunctionWeight: 0.9,
+  uColorShift: [0.2, 0.4, 1.0],
+  uColorMultiplier: 3.2,
+  uColorGamma:      0.82,
+  uFresnelPow:      2.0,
+  uFresnelStrength: 0.3,
+};
+
+// All uniform names the ShaderMaterial needs to expose. Listed in one
+// place to keep the declaration in lockstep with `params`.
+const FLOAT_UNIFORMS = [
+  "uTime", "uHashDot", "uRandDot", "uNoiseSmoothness",
+  "uFbmAmp", "uFbmFreq", "uFbmFreqMult", "uFbmAmpMult",
+  "uVoronoiJitter", "uVoronoiAnimBase",
+  "uVoronoiSinSpeed1", "uVoronoiSinSpeed2", "uVoronoiSinAmp1",
+  "uVoronoiSinSpeed3", "uVoronoiSinSpeed4", "uVoronoiSinAmp2",
+  "uVoronoiFbmScale1", "uVoronoiFbmSpeed1",
+  "uVoronoiFbmScale2", "uVoronoiFbmSpeed2", "uVoronoiFbmDispl",
+  "uSwirlSmoothStart", "uSwirlSmoothEnd", "uSwirlSpeedMult",
+  "uSwirlNoiseAmp2", "uSwirlNoiseScale2", "uSwirlNoiseScale3",
+  "uSwirlNoiseSpeed1", "uSwirlNoiseSpeed2", "uSwirlNoiseSpeed3", "uSwirlNoiseSpeed4",
+  "uSwirlRadialFlow",
+  "uCellCount2", "uCellCount3",
+  "uLayer2Speed", "uLayer2Twist", "uLayer2NoiseScale", "uLayer2NoiseAmp", "uLayer2TimeSpeed", "uLayer2Seed",
+  "uLayer3Speed", "uLayer3Twist", "uLayer3NoiseScale", "uLayer3NoiseAmp", "uLayer3TimeSpeed", "uLayer3Seed",
+  "uEdgeNoiseScale", "uEdgeNoiseSpeed", "uEdgeWidthMin", "uEdgeWidthMax", "uBaseWidth",
+  "uSecondaryEdgeWidth", "uSecondaryEdgePow", "uSecondaryEdgeStrength",
+  "uTertiaryEdgeWidth", "uTertiaryEdgePow", "uTertiaryEdgeStrength",
+  "uGlow2Start", "uGlow2End", "uGlow2Pow", "uGlow2Strength",
+  "uGlow3Start", "uGlow3End", "uGlow3Pow", "uGlow3Strength",
+  "uJunctionWidth", "uJunctionPow", "uJunctionStrength",
+  "uColorNoise2Scale", "uColorNoise2Speed", "uColorNoise3Scale", "uColorNoise3Speed",
+  "uEdgeBrightnessMin", "uEdgeBrightnessMax",
+  "uCellLight2Mult", "uCellLight2Strength", "uCellLight3Mult", "uCellLight3Strength",
+  "uBgNoiseScale", "uBgNoiseSpeed", "uBgDetailScale", "uBgDetailSpeed",
+  "uBgValueMin", "uBgValueMax", "uBgNoiseStrength", "uBgDetailStrength",
+  "uSecondaryWeight", "uTertiaryWeight", "uGlow2Weight", "uGlow3Weight", "uJunctionWeight",
+  "uColorMultiplier", "uColorGamma", "uFresnelPow", "uFresnelStrength",
+];
+const VEC2_UNIFORMS = ["uHashFract"];
+const VEC3_UNIFORMS = ["uRandFract", "uBgColor", "uColorShift"];
+
+const material = new ShaderMaterial(
+  "voronoiMat",
+  scene,
+  { vertexSource: VERT, fragmentSource: FRAG },
+  {
+    attributes: ["position", "normal", "uv"],
+    uniforms: ["world", "worldViewProjection", ...FLOAT_UNIFORMS, ...VEC2_UNIFORMS, ...VEC3_UNIFORMS],
+  },
+);
+material.backFaceCulling = false;
+
+const startT = performance.now() / 1000;
+
+material.onBindObservable.add(() => {
+  const e = material.getEffect();
+  if (!e) return;
+  e.setFloat("uTime", performance.now() / 1000 - startT);
+  for (const k of FLOAT_UNIFORMS) {
+    if (k === "uTime") continue;
+    e.setFloat(k, params[k]);
+  }
+  for (const k of VEC2_UNIFORMS) e.setFloat2(k, params[k][0], params[k][1]);
+  for (const k of VEC3_UNIFORMS) e.setFloat3(k, params[k][0], params[k][1], params[k][2]);
+});
+
+cube.material = material;
+
+// ── Resize ──────────────────────────────────────────────────────────────
+//
+// Three's renderer.setSize(innerWidth, innerHeight) writes BOTH the
+// canvas's intrinsic dimensions AND its inline style, overriding the
+// `canvas { width: 600px }` rule from the source CSS. Babylon's
+// engine.resize() only reads CSS, so to reproduce the original
+// fullscreen behaviour we mimic Three's inline-style write.
+const fitCanvasToViewport = () => {
+  canvas.style.width = window.innerWidth + "px";
+  canvas.style.height = window.innerHeight + "px";
+  engine.resize();
+};
+fitCanvasToViewport();
+window.addEventListener("resize", fitCanvasToViewport);
+
+// ── Debug GUI — folder layout copied from the source ────────────────────
+
+const gui = new GUI();
+
+const cellFolder = gui.addFolder("Cell Counts");
+cellFolder.add(params, "uCellCount2", 1, 10, 0.1).name("Cell Count 2");
+cellFolder.add(params, "uCellCount3", 1, 10, 0.1).name("Cell Count 3");
+
+const layer2Folder = gui.addFolder("Layer 2");
+layer2Folder.add(params, "uLayer2Speed",      -2, 2, 0.1).name("Speed");
+layer2Folder.add(params, "uLayer2Twist",       0, 2, 0.1).name("Twist");
+layer2Folder.add(params, "uLayer2NoiseScale",  1, 20, 0.5).name("Noise Scale");
+layer2Folder.add(params, "uLayer2NoiseAmp",    0, 3, 0.1).name("Noise Amp");
+layer2Folder.add(params, "uLayer2TimeSpeed",   0, 5, 0.1).name("Time Speed");
+layer2Folder.add(params, "uLayer2Seed",        0, 200, 1).name("Seed");
+
+const layer3Folder = gui.addFolder("Layer 3");
+layer3Folder.add(params, "uLayer3Speed",      -2, 2, 0.1).name("Speed");
+layer3Folder.add(params, "uLayer3Twist",       0, 2, 0.1).name("Twist");
+layer3Folder.add(params, "uLayer3NoiseScale",  1, 20, 0.5).name("Noise Scale");
+layer3Folder.add(params, "uLayer3NoiseAmp",    0, 3, 0.1).name("Noise Amp");
+layer3Folder.add(params, "uLayer3TimeSpeed",   0, 5, 0.1).name("Time Speed");
+layer3Folder.add(params, "uLayer3Seed",        0, 200, 1).name("Seed");
+
+const edgesFolder = gui.addFolder("Edges");
+edgesFolder.add(params, "uEdgeNoiseScale",        0.5, 5, 0.1).name("Edge Noise Scale");
+edgesFolder.add(params, "uEdgeNoiseSpeed",        0,   0.5, 0.01).name("Edge Noise Speed");
+edgesFolder.add(params, "uEdgeWidthMin",          0.1, 3,   0.1).name("Edge Width Min");
+edgesFolder.add(params, "uEdgeWidthMax",          0.1, 5,   0.1).name("Edge Width Max");
+edgesFolder.add(params, "uBaseWidth",             0.001, 0.1, 0.001).name("Base Width");
+edgesFolder.add(params, "uSecondaryEdgeWidth",    0.5, 5, 0.1).name("Secondary Width");
+edgesFolder.add(params, "uSecondaryEdgePow",      1, 10, 0.1).name("Secondary Pow");
+edgesFolder.add(params, "uSecondaryEdgeStrength", 0, 2, 0.1).name("Secondary Strength");
+edgesFolder.add(params, "uTertiaryEdgeWidth",     0.5, 5, 0.1).name("Tertiary Width");
+edgesFolder.add(params, "uTertiaryEdgePow",       1, 10, 0.1).name("Tertiary Pow");
+edgesFolder.add(params, "uTertiaryEdgeStrength",  0, 2, 0.1).name("Tertiary Strength");
+
+const glowsFolder = gui.addFolder("Glows");
+glowsFolder.add(params, "uGlow2Start",    0.1, 5,  0.1).name("Glow 2 Start");
+glowsFolder.add(params, "uGlow2End",      1,   20, 0.5).name("Glow 2 End");
+glowsFolder.add(params, "uGlow2Pow",      1,   10, 0.1).name("Glow 2 Pow");
+glowsFolder.add(params, "uGlow2Strength", 0,   2,  0.05).name("Glow 2 Strength");
+glowsFolder.add(params, "uGlow3Start",    0.1, 5,  0.1).name("Glow 3 Start");
+glowsFolder.add(params, "uGlow3End",      1,   20, 0.5).name("Glow 3 End");
+glowsFolder.add(params, "uGlow3Pow",      1,   10, 0.1).name("Glow 3 Pow");
+glowsFolder.add(params, "uGlow3Strength", 0,   2,  0.05).name("Glow 3 Strength");
+
+const junctionFolder = gui.addFolder("Junction");
+junctionFolder.add(params, "uJunctionWidth",    0.5, 10, 0.1).name("Width");
+junctionFolder.add(params, "uJunctionPow",      1,   15, 0.5).name("Power");
+junctionFolder.add(params, "uJunctionStrength", 0,   5,  0.1).name("Strength");
+
+const colorNoiseFolder = gui.addFolder("Color Noise");
+colorNoiseFolder.add(params, "uColorNoise2Scale",  1, 20, 0.5).name("Noise 2 Scale");
+colorNoiseFolder.add(params, "uColorNoise2Speed",  0, 1,  0.01).name("Noise 2 Speed");
+colorNoiseFolder.add(params, "uColorNoise3Scale",  1, 20, 0.5).name("Noise 3 Scale");
+colorNoiseFolder.add(params, "uColorNoise3Speed",  0, 1,  0.01).name("Noise 3 Speed");
+colorNoiseFolder.add(params, "uEdgeBrightnessMin", 0, 1,  0.05).name("Brightness Min");
+colorNoiseFolder.add(params, "uEdgeBrightnessMax", 0, 2,  0.05).name("Brightness Max");
+
+const cellLightsFolder = gui.addFolder("Cell Lights");
+cellLightsFolder.add(params, "uCellLight2Mult",     1, 50, 1).name("Light 2 Mult");
+cellLightsFolder.add(params, "uCellLight2Strength", 0, 1,  0.05).name("Light 2 Strength");
+cellLightsFolder.add(params, "uCellLight3Mult",     1, 50, 1).name("Light 3 Mult");
+cellLightsFolder.add(params, "uCellLight3Strength", 0, 1,  0.05).name("Light 3 Strength");
+
+const bgFolder = gui.addFolder("Background");
+bgFolder.add(params, "uBgNoiseScale",     0.5, 10, 0.1).name("Noise Scale");
+bgFolder.add(params, "uBgNoiseSpeed",     0,   0.3, 0.01).name("Noise Speed");
+bgFolder.add(params, "uBgDetailScale",    0.5, 10, 0.1).name("Detail Scale");
+bgFolder.add(params, "uBgDetailSpeed",    0,   0.3, 0.01).name("Detail Speed");
+bgFolder.add(params, "uBgValueMin",       0,   0.5, 0.01).name("Value Min");
+bgFolder.add(params, "uBgValueMax",       0,   1,   0.05).name("Value Max");
+bgFolder.add(params, "uBgNoiseStrength",  0,   0.2, 0.01).name("Noise Strength");
+bgFolder.add(params, "uBgDetailStrength", 0,   0.2, 0.01).name("Detail Strength");
+
+const weightsFolder = gui.addFolder("Caustic Weights");
+weightsFolder.add(params, "uSecondaryWeight", 0, 3, 0.1).name("Secondary");
+weightsFolder.add(params, "uTertiaryWeight",  0, 3, 0.1).name("Tertiary");
+weightsFolder.add(params, "uGlow2Weight",     0, 3, 0.1).name("Glow 2");
+weightsFolder.add(params, "uGlow3Weight",     0, 3, 0.1).name("Glow 3");
+weightsFolder.add(params, "uJunctionWeight",  0, 3, 0.1).name("Junction");
+
+const gradingFolder = gui.addFolder("Color Grading");
+gradingFolder.add(params, "uColorMultiplier", 0.5, 10, 0.1).name("Multiplier");
+gradingFolder.add(params, "uColorGamma",      0.3, 2,  0.01).name("Gamma");
+
+const voronoiFolder = gui.addFolder("Voronoi Animation");
+voronoiFolder.add(params, "uVoronoiJitter",    0,   1,    0.05).name("Jitter");
+voronoiFolder.add(params, "uVoronoiAnimBase",  0,   0.3,  0.01).name("Anim Base");
+voronoiFolder.add(params, "uVoronoiSinSpeed1", 0,   2,    0.1).name("Sin Speed 1");
+voronoiFolder.add(params, "uVoronoiSinSpeed2", 0,   2,    0.1).name("Sin Speed 2");
+voronoiFolder.add(params, "uVoronoiSinAmp1",   0,   2,    0.1).name("Sin Amp 1");
+voronoiFolder.add(params, "uVoronoiSinSpeed3", 0,   2,    0.1).name("Sin Speed 3");
+voronoiFolder.add(params, "uVoronoiSinSpeed4", 0,   2,    0.1).name("Sin Speed 4");
+voronoiFolder.add(params, "uVoronoiSinAmp2",   0,   2,    0.1).name("Sin Amp 2");
+voronoiFolder.add(params, "uVoronoiFbmScale1", 0.1, 2,    0.05).name("FBM Scale 1");
+voronoiFolder.add(params, "uVoronoiFbmSpeed1", 0,   0.3,  0.01).name("FBM Speed 1");
+voronoiFolder.add(params, "uVoronoiFbmScale2", 0.1, 2,    0.05).name("FBM Scale 2");
+voronoiFolder.add(params, "uVoronoiFbmSpeed2", 0,   0.3,  0.01).name("FBM Speed 2");
+voronoiFolder.add(params, "uVoronoiFbmDispl",  0,   0.3,  0.01).name("FBM Displ");
+
+const swirlFolder = gui.addFolder("Swirl");
+swirlFolder.add(params, "uSwirlSmoothStart", 0,   1,   0.05).name("Smooth Start");
+swirlFolder.add(params, "uSwirlSmoothEnd",   0,   1,   0.05).name("Smooth End");
+swirlFolder.add(params, "uSwirlSpeedMult",   0,   10,  0.1).name("Speed Mult");
+swirlFolder.add(params, "uSwirlNoiseAmp2",   0,   2,   0.1).name("Noise Amp 2");
+swirlFolder.add(params, "uSwirlNoiseScale2", 0.5, 5,   0.1).name("Noise Scale 2");
+swirlFolder.add(params, "uSwirlNoiseScale3", 0.5, 5,   0.1).name("Noise Scale 3");
+swirlFolder.add(params, "uSwirlNoiseSpeed1", 0,   0.5, 0.01).name("Noise Speed 1");
+swirlFolder.add(params, "uSwirlNoiseSpeed2", 0,   0.5, 0.01).name("Noise Speed 2");
+swirlFolder.add(params, "uSwirlNoiseSpeed3", 0,   0.5, 0.01).name("Noise Speed 3");
+swirlFolder.add(params, "uSwirlNoiseSpeed4", 0,   0.5, 0.01).name("Noise Speed 4");
+swirlFolder.add(params, "uSwirlRadialFlow",  0,   0.2, 0.01).name("Radial Flow");
+
+const fbmFolder = gui.addFolder("FBM");
+fbmFolder.add(params, "uFbmAmp",      0,   2,  0.1).name("Amplitude");
+fbmFolder.add(params, "uFbmFreq",     0.5, 10, 0.1).name("Frequency");
+fbmFolder.add(params, "uFbmFreqMult", 1,   5,  0.1).name("Freq Mult");
+fbmFolder.add(params, "uFbmAmpMult",  0.1, 1,  0.05).name("Amp Mult");
+
+const noiseFolder = gui.addFolder("Noise");
+noiseFolder.add(params, "uNoiseSmoothness", 2, 5, 0.1).name("Smoothness");
+
+const fresnelFolder = gui.addFolder("Fresnel");
+fresnelFolder.add(params, "uFresnelPow",      1, 5, 0.1).name("Power");
+fresnelFolder.add(params, "uFresnelStrength", 0, 1, 0.05).name("Strength");
+
+[cellFolder, layer2Folder, layer3Folder, edgesFolder, glowsFolder, junctionFolder,
+ colorNoiseFolder, cellLightsFolder, bgFolder, weightsFolder, gradingFolder,
+ voronoiFolder, swirlFolder, fbmFolder, noiseFolder, fresnelFolder].forEach((f) => f.close());
+
+// ── Render loop ─────────────────────────────────────────────────────────
+
+engine.runRenderLoop(() => scene.render());

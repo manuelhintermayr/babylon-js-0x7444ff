@@ -1,5 +1,5 @@
 {
-  "name": "template-purple-canvas",
+  "name": "template-purple-canvas-babylon",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
+  },
+  "dependencies": {
+    "@babylonjs/core": "^7.0.0"
   },
   "devDependencies": {
     "vite": "^5.0.8"

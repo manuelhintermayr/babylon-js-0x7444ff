@@ -1,17 +1,18 @@
-import glsl from "vite-plugin-glsl";
-
+// Mirrors the Three.js source's vite config — same root + base. The
+// publicDir points at the project's static/ so the 15+ MB ironman.glb
+// (and the DRACO decoder) is served from there. Path is `../static/`
+// because root is `src/`.
 export default {
   root: "src/",
   publicDir: "../static/",
   base: "./",
   server: {
-    host: true, // Open to local network and display URL
-    open: !("SANDBOX_URL" in process.env || "CODESANDBOX_HOST" in process.env), // Open if it's not a CodeSandbox
+    host: true,
   },
   build: {
-    outDir: "../dist", // Output in the dist/ folder
-    emptyOutDir: true, // Empty the folder first
-    sourcemap: true, // Add sourcemap
+    outDir: "../dist",
+    emptyOutDir: true,
+    sourcemap: true,
+    target: "esnext",
   },
-  plugins: [glsl()],
 };

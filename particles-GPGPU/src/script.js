@@ -113,9 +113,23 @@ const models = [
 ];
 
 // Cookie-based round-robin so each reload picks the next model.
-const previousModelIndex = parseInt(document.cookie ? document.cookie : -1);
-const modelIndex = (previousModelIndex + 1) % models.length;
-document.cookie = modelIndex;
+//
+// The Three.js source writes/reads the bare value into document.cookie
+// (i.e. `document.cookie = 2`), which works on localhost where no other
+// cookie is set, but fails on a real domain where document.cookie also
+// returns analytics or other site-level cookies — `parseInt(...)` then
+// yields NaN and `models[NaN]` is undefined. We use a named cookie
+// (`gpgpuModelIndex=…`) and parse it out of the cookie jar instead.
+const COOKIE_NAME = "gpgpuModelIndex";
+const readCookie = (name) => {
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`));
+  return match ? match.slice(name.length + 1) : "";
+};
+const previousModelIndex = parseInt(readCookie(COOKIE_NAME), 10);
+const modelIndex = ((Number.isFinite(previousModelIndex) ? previousModelIndex : -1) + 1) % models.length;
+document.cookie = `${COOKIE_NAME}=${modelIndex}; path=/; max-age=31536000`;
 const model = models[modelIndex];
 
 document.getElementById("curr-model-name").innerText = model.name;

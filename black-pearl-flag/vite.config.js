@@ -1,7 +1,5 @@
-import glsl from "vite-plugin-glsl";
-
+// publicDir points at the sibling Three.js project's public/ so the
+// pearl.png texture is served from a single location without duplication.
 export default {
-    plugins:[
-        glsl()
-    ]
-}
+  publicDir: "./public/",
+};

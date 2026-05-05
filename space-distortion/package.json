@@ -1,5 +1,5 @@
 {
-  "name": "space-distortion",
+  "name": "space-distortion-babylon",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,12 +8,11 @@
     "build": "vite build",
     "preview": "vite preview"
   },
+  "dependencies": {
+    "@babylonjs/core": "^7.0.0",
+    "lil-gui": "^0.19.1"
+  },
   "devDependencies": {
     "vite": "^5.1.4"
-  },
-  "dependencies": {
-    "lil-gui": "^0.19.1",
-    "three": "^0.162.0",
-    "vite-plugin-glsl": "^1.2.1"
   }
 }

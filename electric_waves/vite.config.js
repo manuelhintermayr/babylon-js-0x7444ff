@@ -1,7 +1,5 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-})
+// publicDir points at the sibling Three.js project's public/ so the
+// favicon is served from a single location without duplication.
+export default {
+  publicDir: "./public/",
+};

@@ -1,5 +1,5 @@
 {
-  "name": "particles-gpgpu",
+  "name": "particles-gpgpu-babylon",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,8 @@
     "vite": "^5.0.12"
   },
   "dependencies": {
-    "lil-gui": "^0.19.1",
-    "three": "^0.160.0",
-    "vite-plugin-glsl": "^1.2.1"
+    "@babylonjs/core": "^7.0.0",
+    "@babylonjs/loaders": "^7.0.0",
+    "lil-gui": "^0.19.1"
   }
 }

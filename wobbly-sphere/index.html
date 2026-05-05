@@ -2,7 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Open+Sans&display=swap");
@@ -33,16 +32,8 @@
         left: 0;
         padding: 30px 30px;
       }
-      h1 {
-        font-size: 35px;
-        margin-bottom: 0px;
-        padding: 8px 0px;
-      }
-      p {
-        margin-bottom: 2px;
-        font-weight: 300;
-        font-size: 14px;
-      }
+      h1 { font-size: 35px; margin-bottom: 0px; padding: 8px 0px; }
+      p { margin-bottom: 2px; font-weight: 300; font-size: 14px; }
       a {
         color: #974000;
         text-decoration: underline;
@@ -50,43 +41,29 @@
         text-underline-offset: 3px;
         transition: all 0.3s ease;
       }
-      a:hover {
-        color: #964500;
-      }
-
-      canvas {
-        display: block;
-        width: 600px;
-        height: 600px;
-        outline: none;
-      }
+      a:hover { color: #964500; }
+      canvas { display: block; width: 600px; height: 600px; outline: none; }
 
       @media (max-width: 700px) {
-        canvas {
-          display: block;
-          width: 100%;
-          height: calc(100vw * 1);
-        }
+        canvas { display: block; width: 100%; height: calc(100vw * 1); }
       }
     </style>
-    <title>Wobbly Sphere</title>
+    <title>Wobbly Sphere (Babylon.js port)</title>
   </head>
   <body>
     <div class="underlay">
-      <h1>Wobbly Sphere</h1>
+      <h1>Wobbly Sphere (Babylon.js)</h1>
       <p>
-        Made with 🧡 by
-        <a target="_blank" href="https://github.com/SahilK-027">SK027.</a>
+        Babylon.js port of
+        <a target="_blank" href="https://github.com/SahilK-027/0x7444ff/tree/main/wobbly-sphere"
+          >SK027's wobbly-sphere</a
+        >.
       </p>
       <p>
-        Link to source Code:
-        <a
-          target="_blank"
-          href="https://github.com/SahilK-027/0x7444ff/tree/main/wobbly-sphere"
-          >Code.</a
-        >
+        Original by
+        <a target="_blank" href="https://github.com/SahilK-027" rel="noreferrer">SK027</a>
+        &mdash; 22 Jan 2024.
       </p>
-      <p>22 Jan 2024.</p>
     </div>
     <canvas class="webgl" id="shaderCanvas"></canvas>
     <script type="module" src="main.js"></script>

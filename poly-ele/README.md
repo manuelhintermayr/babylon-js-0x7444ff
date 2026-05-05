@@ -1,1 +1,0 @@
-# 0x7444ff-poly-ele-prod

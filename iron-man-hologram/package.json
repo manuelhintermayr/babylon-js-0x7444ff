@@ -1,5 +1,5 @@
 {
-  "name": "iron-man-hologram",
+  "name": "iron-man-hologram-babylon",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,12 +8,12 @@
     "build": "vite build",
     "preview": "vite preview"
   },
-  "devDependencies": {
-    "vite": "^5.2.0"
-  },
   "dependencies": {
-    "lil-gui": "^0.19.2",
-    "three": "^0.163.0",
-    "vite-plugin-glsl": "^1.3.0"
+    "@babylonjs/core": "^7.0.0",
+    "@babylonjs/loaders": "^7.0.0",
+    "lil-gui": "^0.19.1"
+  },
+  "devDependencies": {
+    "vite": "^5.0.12"
   }
 }

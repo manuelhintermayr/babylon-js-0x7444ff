@@ -1,5 +1,5 @@
 {
-  "name": "peacock",
+  "name": "peacock-babylon",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,12 +8,10 @@
     "build": "vite build",
     "preview": "vite preview"
   },
+  "dependencies": {
+    "@babylonjs/core": "^7.0.0"
+  },
   "devDependencies": {
     "vite": "^5.1.4"
-  },
-  "dependencies": {
-    "lil-gui": "^0.19.2",
-    "three": "^0.162.0",
-    "vite-plugin-glsl": "^1.2.1"
   }
 }

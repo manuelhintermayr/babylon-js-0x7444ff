@@ -49,10 +49,10 @@ import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/loaders/glTF";
 import GUI from "lil-gui";
 
-import roseMusic      from "../../particles-GPGPU/src/audio/rose.mp3";
-import spartanMusic   from "../../particles-GPGPU/src/audio/mvspartan.mp3";
-import flowerMusic    from "../../particles-GPGPU/src/audio/flowers.mp3";
-import chameleonMusic from "../../particles-GPGPU/src/audio/chameleon.mp3";
+import roseMusic      from "./audio/rose.mp3";
+import spartanMusic   from "./audio/mvspartan.mp3";
+import flowerMusic    from "./audio/flowers.mp3";
+import chameleonMusic from "./audio/chameleon.mp3";
 
 // ── Models config (1:1 with source) ─────────────────────────────────────
 
